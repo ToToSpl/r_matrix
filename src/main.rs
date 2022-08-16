@@ -1,12 +1,14 @@
 use std::collections::VecDeque;
 use std::io::{stdout, Stdout, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{thread, usize};
 
 use rand::seq::SliceRandom;
 use rand::Rng;
 use termion::screen::AlternateScreen;
-use termion::{clear, color, cursor, terminal_size};
+use termion::{color, cursor, terminal_size};
 
 struct MatrixDroplet {
     filled: i32,
@@ -19,23 +21,24 @@ impl MatrixDroplet {
     fn new(pos_x: i32) -> MatrixDroplet {
         let mut rng = rand::thread_rng();
         MatrixDroplet {
-            filled: rng.gen_range(2..=4),
-            empty: rng.gen_range(1..=4),
+            filled: rng.gen_range(4..=10),
+            empty: rng.gen_range(8..=16),
             pos_x,
             pos_y: -1,
         }
     }
 
     fn touch_top(&self) -> bool {
-        self.filled + self.empty < self.pos_y
+        self.filled + self.empty <= self.pos_y
     }
 
     fn should_drop(&self, screen_height: u32) -> bool {
-        self.pos_y - screen_height as i32 >= self.filled + self.empty
+        self.pos_y - screen_height as i32 > self.filled + self.empty
     }
 
     fn update(&mut self, buffer: &mut [char], codes: &[char], screen_height: u32) {
         self.pos_y += 1;
+
         let mut rng = rand::thread_rng();
         let index_top: usize = self.pos_y.try_into().unwrap();
         if index_top < screen_height as usize {
@@ -54,39 +57,69 @@ impl MatrixDroplet {
             return;
         }
 
+        let low_empty: usize = if self.pos_y - self.filled - self.empty > 0 {
+            (self.pos_y - self.filled - self.empty) as usize
+        } else {
+            0
+        };
+
         let low: usize = if self.pos_y > self.filled {
             (self.pos_y - self.filled).try_into().unwrap()
         } else {
             0
         };
 
-        let high: usize = if self.pos_y > height as i32 {
-            height.try_into().unwrap()
+        let high: usize = if self.pos_y >= height as i32 {
+            (height - 1).try_into().unwrap()
         } else {
             self.pos_y.try_into().unwrap()
         };
+
+        for i in low_empty..low {
+            write!(
+                screen,
+                "{} ",
+                cursor::Goto(self.pos_x.try_into().unwrap(), (i + 1).try_into().unwrap()),
+            )
+            .unwrap();
+        }
 
         for i in low..high {
             write!(
                 screen,
                 "{}{}{}",
-                buffer[low],
                 cursor::Goto(self.pos_x.try_into().unwrap(), (i + 1).try_into().unwrap()),
-                color::Fg(color::LightGreen)
+                color::Fg(color::LightGreen),
+                buffer[i]
             )
             .unwrap();
         }
-        write!(
-            screen,
-            "{}{}{}",
-            buffer[high],
-            cursor::Goto(
-                self.pos_x.try_into().unwrap(),
-                (self.pos_y + 1).try_into().unwrap()
-            ),
-            color::Fg(color::White)
-        )
-        .unwrap();
+
+        if self.pos_y < height as i32 {
+            write!(
+                screen,
+                "{}{}{}",
+                cursor::Goto(
+                    self.pos_x.try_into().unwrap(),
+                    (high + 1).try_into().unwrap()
+                ),
+                color::Fg(color::White),
+                buffer[high]
+            )
+            .unwrap();
+        } else {
+            write!(
+                screen,
+                "{}{}{}",
+                cursor::Goto(
+                    self.pos_x.try_into().unwrap(),
+                    (high + 1).try_into().unwrap()
+                ),
+                color::Fg(color::LightGreen),
+                buffer[high]
+            )
+            .unwrap();
+        };
     }
 }
 
@@ -107,7 +140,7 @@ impl<'a> MatrixLine<'a> {
                 .map(|_| char::from_u32(20).unwrap())
                 .collect::<Vec<char>>(),
             droplets: VecDeque::from([MatrixDroplet::new(pos_x)]),
-            speed: rand::thread_rng().gen_range(1..=7) * 100_000_000,
+            speed: rand::thread_rng().gen_range(5..=20) * 10_000_000,
             pos_x,
             last_updated: Instant::now(),
             screen_height,
@@ -132,7 +165,7 @@ impl<'a> MatrixLine<'a> {
             self.droplets.pop_front();
         }
 
-        if !self.droplets[self.droplets.len() - 1].touch_top() {
+        if self.droplets[self.droplets.len() - 1].touch_top() {
             self.droplets.push_back(MatrixDroplet::new(self.pos_x));
         }
 
@@ -166,7 +199,7 @@ impl<'a, 'b> Matrix<'a, 'b> {
         let mut lines = Vec::new();
 
         for i in 0..size.0 {
-            let line = MatrixLine::new(size.1 as u32, i as i32, codes);
+            let line = MatrixLine::new(size.1 as u32, (i + 1) as i32, codes);
             update_rate = if line.get_speed() < update_rate {
                 line.get_speed()
             } else {
@@ -194,8 +227,12 @@ impl<'a, 'b> Matrix<'a, 'b> {
         self.screen.flush().unwrap();
     }
 
-    fn clear(&mut self) {
-        write!(self.screen, "{}", clear::All).unwrap();
+    fn hide_cursor(&mut self) {
+        write!(self.screen, "{}", cursor::Hide).unwrap();
+    }
+
+    fn unhide_cursor(&mut self) {
+        write!(self.screen, "{}", cursor::Show).unwrap();
     }
 
     fn sleep(&self) {
@@ -211,18 +248,30 @@ fn get_matrix_codes() -> Vec<char> {
 }
 
 fn main() {
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    ctrlc::set_handler(move || {
+        println!("received Ctrl+C!");
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
+
     {
         let mut screen = AlternateScreen::from(stdout());
         let codes = get_matrix_codes();
 
         let mut matrix = Matrix::new(&mut screen, &codes);
+        matrix.hide_cursor();
 
-        loop {
-            matrix.clear();
+        while running.load(Ordering::SeqCst) {
             matrix.draw();
             matrix.update();
             matrix.flush();
             matrix.sleep();
         }
+
+        matrix.unhide_cursor();
     }
+    println!("Done");
 }
