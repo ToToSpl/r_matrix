@@ -18,13 +18,13 @@ struct MatrixDroplet {
 }
 
 impl MatrixDroplet {
-    fn new(pos_x: i32) -> MatrixDroplet {
+    fn new(pos_x: i32, screen_height: u32) -> MatrixDroplet {
         let mut rng = rand::thread_rng();
         MatrixDroplet {
-            filled: rng.gen_range(4..=10),
-            empty: rng.gen_range(8..=16),
+            filled: rng.gen_range((screen_height as i32 / 2)..=(screen_height as i32)),
+            empty: rng.gen_range((screen_height as i32 / 3)..=(screen_height as i32 / 2)),
             pos_x,
-            pos_y: -1,
+            pos_y: -rng.gen_range(0..=(screen_height as i32 / 2)),
         }
     }
 
@@ -38,6 +38,9 @@ impl MatrixDroplet {
 
     fn update(&mut self, buffer: &mut [char], codes: &[char], screen_height: u32) {
         self.pos_y += 1;
+        if self.pos_y < 0 {
+            return;
+        }
 
         let mut rng = rand::thread_rng();
         let index_top: usize = self.pos_y.try_into().unwrap();
@@ -78,7 +81,7 @@ impl MatrixDroplet {
         for i in low_empty..low {
             write!(
                 screen,
-                "{} ",
+                "{}  ",
                 cursor::Goto(self.pos_x.try_into().unwrap(), (i + 1).try_into().unwrap()),
             )
             .unwrap();
@@ -87,9 +90,9 @@ impl MatrixDroplet {
         for i in low..high {
             write!(
                 screen,
-                "{}{}{}",
+                "{}{}{} ",
                 cursor::Goto(self.pos_x.try_into().unwrap(), (i + 1).try_into().unwrap()),
-                color::Fg(color::LightGreen),
+                color::Fg(color::Green),
                 buffer[i]
             )
             .unwrap();
@@ -98,7 +101,7 @@ impl MatrixDroplet {
         if self.pos_y < height as i32 {
             write!(
                 screen,
-                "{}{}{}",
+                "{}{}{} ",
                 cursor::Goto(
                     self.pos_x.try_into().unwrap(),
                     (high + 1).try_into().unwrap()
@@ -110,12 +113,12 @@ impl MatrixDroplet {
         } else {
             write!(
                 screen,
-                "{}{}{}",
+                "{}{}{} ",
                 cursor::Goto(
                     self.pos_x.try_into().unwrap(),
                     (high + 1).try_into().unwrap()
                 ),
-                color::Fg(color::LightGreen),
+                color::Fg(color::Green),
                 buffer[high]
             )
             .unwrap();
@@ -140,8 +143,8 @@ impl<'a> MatrixLine<'a> {
             buffer: (1..=screen_height)
                 .map(|_| char::from_u32(20).unwrap())
                 .collect::<Vec<char>>(),
-            droplets: VecDeque::from([MatrixDroplet::new(pos_x)]),
-            speed: rand::thread_rng().gen_range(5..=20) * 10_000_000,
+            droplets: VecDeque::from([MatrixDroplet::new(pos_x, screen_height)]),
+            speed: rand::thread_rng().gen_range(32..=38) * 1_000_000,
             pos_x,
             last_updated: Instant::now(),
             screen_height,
@@ -168,7 +171,8 @@ impl<'a> MatrixLine<'a> {
         }
 
         if self.droplets[self.droplets.len() - 1].touch_top() {
-            self.droplets.push_back(MatrixDroplet::new(self.pos_x));
+            self.droplets
+                .push_back(MatrixDroplet::new(self.pos_x, self.screen_height));
         }
 
         self.should_draw = true;
@@ -207,7 +211,7 @@ impl<'a, 'b> Matrix<'a, 'b> {
         let mut update_rate = 700_000_000;
         let mut lines = Vec::new();
 
-        for i in 0..size.0 {
+        for i in (0..size.0 - 1).step_by(2) {
             let line = MatrixLine::new(size.1 as u32, (i + 1) as i32, codes);
             update_rate = if line.get_speed() < update_rate {
                 line.get_speed()
