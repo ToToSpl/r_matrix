@@ -131,6 +131,7 @@ struct MatrixLine<'a> {
     last_updated: Instant,
     screen_height: u32,
     codes: &'a [char],
+    should_draw: bool,
 }
 
 impl<'a> MatrixLine<'a> {
@@ -145,6 +146,7 @@ impl<'a> MatrixLine<'a> {
             last_updated: Instant::now(),
             screen_height,
             codes,
+            should_draw: false,
         }
     }
 
@@ -169,13 +171,20 @@ impl<'a> MatrixLine<'a> {
             self.droplets.push_back(MatrixDroplet::new(self.pos_x));
         }
 
+        self.should_draw = true;
         self.last_updated = Instant::now();
     }
 
-    fn draw(&self, screen: &mut AlternateScreen<Stdout>) {
+    fn draw(&mut self, screen: &mut AlternateScreen<Stdout>) {
+        if !self.should_draw {
+            return;
+        }
+
         self.droplets
             .iter()
             .for_each(|d| d.draw(&self.buffer, self.screen_height, screen));
+
+        self.should_draw = false;
     }
 }
 
