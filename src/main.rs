@@ -47,12 +47,6 @@ impl MatrixDroplet {
         if index_top < screen_height as usize {
             buffer[index_top] = *codes.choose(&mut rng).unwrap();
         }
-
-        let index_bot = self.pos_y - self.filled;
-        if index_bot > 0 && index_bot < screen_height as i32 {
-            let index_bot: usize = index_bot.try_into().unwrap();
-            buffer[index_bot] = char::from_u32(20).unwrap();
-        }
     }
 
     fn draw(&self, buffer: &[char], height: u32, screen: &mut AlternateScreen<Stdout>) {
@@ -60,40 +54,18 @@ impl MatrixDroplet {
             return;
         }
 
-        let low_empty: usize = if self.pos_y - self.filled - self.empty > 0 {
-            (self.pos_y - self.filled - self.empty) as usize
-        } else {
-            0
-        };
-
-        let low: usize = if self.pos_y > self.filled {
-            (self.pos_y - self.filled).try_into().unwrap()
-        } else {
-            0
-        };
-
-        let high: usize = if self.pos_y >= height as i32 {
-            (height - 1).try_into().unwrap()
-        } else {
-            self.pos_y.try_into().unwrap()
-        };
-
-        for i in low_empty..low {
-            write!(
-                screen,
-                "{}  ",
-                cursor::Goto(self.pos_x.try_into().unwrap(), (i + 1).try_into().unwrap()),
-            )
-            .unwrap();
+        if self.pos_y > self.filled {
+            let low = (self.pos_y - self.filled) as u16;
+            write!(screen, "{}  ", cursor::Goto(self.pos_x as u16, low),).unwrap();
         }
 
-        for i in low..high {
+        if self.pos_y > 0 && self.pos_y <= height as i32 {
             write!(
                 screen,
                 "{}{}{} ",
-                cursor::Goto(self.pos_x.try_into().unwrap(), (i + 1).try_into().unwrap()),
+                cursor::Goto(self.pos_x as u16, self.pos_y as u16),
                 color::Fg(color::Green),
-                buffer[i]
+                buffer[(self.pos_y - 1) as usize],
             )
             .unwrap();
         }
@@ -102,27 +74,12 @@ impl MatrixDroplet {
             write!(
                 screen,
                 "{}{}{} ",
-                cursor::Goto(
-                    self.pos_x.try_into().unwrap(),
-                    (high + 1).try_into().unwrap()
-                ),
+                cursor::Goto(self.pos_x as u16, (self.pos_y + 1) as u16),
                 color::Fg(color::White),
-                buffer[high]
+                buffer[self.pos_y as usize]
             )
             .unwrap();
-        } else {
-            write!(
-                screen,
-                "{}{}{} ",
-                cursor::Goto(
-                    self.pos_x.try_into().unwrap(),
-                    (high + 1).try_into().unwrap()
-                ),
-                color::Fg(color::Green),
-                buffer[high]
-            )
-            .unwrap();
-        };
+        }
     }
 }
 
