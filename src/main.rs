@@ -144,7 +144,7 @@ impl<'a> MatrixLine<'a> {
                 .map(|_| char::from_u32(20).unwrap())
                 .collect::<Vec<char>>(),
             droplets: VecDeque::from([MatrixDroplet::new(pos_x, screen_height)]),
-            speed: rand::thread_rng().gen_range(32..=38) * 1_000_000,
+            speed: rand::thread_rng().gen_range(38..=60) * 1_000_000,
             pos_x,
             last_updated: Instant::now(),
             screen_height,
