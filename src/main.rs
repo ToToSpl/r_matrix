@@ -45,7 +45,8 @@ impl MatrixDroplet {
         let mut rng = rand::thread_rng();
         let index_top: usize = self.pos_y.try_into().unwrap();
         if index_top < screen_height as usize {
-            buffer[index_top] = *codes.choose(&mut rng).unwrap();
+            buffer[0] = buffer[1];
+            buffer[1] = *codes.choose(&mut rng).unwrap();
         }
     }
 
@@ -65,7 +66,7 @@ impl MatrixDroplet {
                 "{}{}{} ",
                 cursor::Goto(self.pos_x as u16, self.pos_y as u16),
                 color::Fg(color::Green),
-                buffer[(self.pos_y - 1) as usize],
+                buffer[0],
             )
             .unwrap();
         }
@@ -76,7 +77,7 @@ impl MatrixDroplet {
                 "{}{}{} ",
                 cursor::Goto(self.pos_x as u16, (self.pos_y + 1) as u16),
                 color::Fg(color::White),
-                buffer[self.pos_y as usize]
+                buffer[1]
             )
             .unwrap();
         }
@@ -84,7 +85,7 @@ impl MatrixDroplet {
 }
 
 struct MatrixLine<'a> {
-    buffer: Vec<char>,
+    buffer: [char; 2],
     droplets: VecDeque<MatrixDroplet>,
     pos_x: i32,
     speed: u32,
@@ -96,10 +97,9 @@ struct MatrixLine<'a> {
 
 impl<'a> MatrixLine<'a> {
     fn new(screen_height: u32, pos_x: i32, codes: &'a [char]) -> MatrixLine {
+        let space = char::from_u32(20).unwrap();
         MatrixLine {
-            buffer: (1..=screen_height)
-                .map(|_| char::from_u32(20).unwrap())
-                .collect::<Vec<char>>(),
+            buffer: [space, space],
             droplets: VecDeque::from([MatrixDroplet::new(pos_x, screen_height)]),
             speed: rand::thread_rng().gen_range(38..=60) * 1_000_000,
             pos_x,
